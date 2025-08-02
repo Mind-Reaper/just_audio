@@ -217,6 +217,20 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   Stream<VisualizerFftCaptureMessage> get visualizerFftStream =>
       visualizerFftController.stream;
 
+
+  @override
+  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) {
+    // TODO: implement startVisualizer
+    return super.startVisualizer(request);
+  }
+
+  @override
+  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) {
+    // TODO: implement stopVisualizer
+    return super.stopVisualizer(request);
+  }
+
+
   @override
   Future<LoadResponse> load(LoadRequest request) =>
       _playerAudioHandler.customLoad(request);
