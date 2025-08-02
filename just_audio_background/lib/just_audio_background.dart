@@ -178,6 +178,10 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   /// Add reference to original platform player for visualizer
   AudioPlayerPlatform? _originalPlayer;
 
+  Timer? _syncTimer;
+  bool _visualizerActive = false;
+  static const Duration _syncInterval = Duration(milliseconds: 100);
+
   _JustAudioPlayer({required this.initRequest}) : super(initRequest.id) {
     eventController.onCancel = _playerAudioHandler.cancelStreamSubscriptions;
     _playerAudioHandler._initPlayer(initRequest);
@@ -216,11 +220,12 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
 
   Future<void> release() async {
     /// Delegate visualizer methods to original platform
+    _stopPositionSync();
     await _audioHandler.stop();
     if (_originalPlayer != null) {
-      await _platform
-          .disposePlayer(DisposePlayerRequest(id: _originalPlayer!.id));
+      await _platform.disposePlayer(DisposePlayerRequest(id: _originalPlayer!.id));
     }
+
   }
 
   @override
@@ -249,8 +254,9 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
       await _initOriginalPlayer();
     }
     if (_originalPlayer != null) {
-      /// Sync the audio source and position
       await _syncOriginalPlayer();
+      _visualizerActive = true;
+      _startPositionSync();
       return await _originalPlayer!.startVisualizer(request);
     }
     return StartVisualizerResponse();
@@ -259,10 +265,37 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Future<StopVisualizerResponse> stopVisualizer(
       StopVisualizerRequest request) async {
+    _visualizerActive = false;
+    _stopPositionSync();
     if (_originalPlayer != null) {
       return await _originalPlayer!.stopVisualizer(request);
     }
     return StopVisualizerResponse();
+  }
+
+  void _startPositionSync() {
+    _stopPositionSync(); // Clear any existing timer
+    _syncTimer = Timer.periodic(_syncInterval, (timer) {
+      if (_visualizerActive &&
+          _originalPlayer != null &&
+          _playerAudioHandler._playing) {
+        _syncPositions();
+      }
+    });
+  }
+
+  void _stopPositionSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+  }
+
+  Future<void> _syncPositions() async {
+    try {
+      final currentPos = _playerAudioHandler.currentPosition;
+      await _originalPlayer!.seek(SeekRequest(position: currentPos));
+    } catch (e) {
+      // Ignore sync errors
+    }
   }
 
   Future<void> _syncOriginalPlayer() async {
@@ -277,7 +310,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
       ));
 
       /// Mute the original player so we don't get double audio
-      await _originalPlayer!.setVolume(SetVolumeRequest(volume: 0.1));
+      await _originalPlayer!.setVolume(SetVolumeRequest(volume: 0.0000001));
 
       /// Sync playback state
       if (_playerAudioHandler._playing) {
@@ -295,6 +328,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Future<PlayResponse> play(PlayRequest request) async {
     await _audioHandler.play();
+
     /// Sync with original player
     if (_originalPlayer != null) {
       try {
@@ -309,6 +343,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Future<PauseResponse> pause(PauseRequest request) async {
     await _audioHandler.pause();
+
     /// Sync with original player
     if (_originalPlayer != null) {
       try {
@@ -379,14 +414,14 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Future<SeekResponse> seek(SeekRequest request) async {
     final response = await _playerAudioHandler.customPlayerSeek(request);
-    /// Sync with original player
-    if (_originalPlayer != null) {
+    // Immediately sync with original player
+    if (_originalPlayer != null && _visualizerActive) {
       try {
         await _originalPlayer!.seek(request);
-    } catch (e) {
-    /// Ignore sync errors
+      } catch (e) {
+        // Ignore sync errors
+      }
     }
-  }
     return response;
   }
 
