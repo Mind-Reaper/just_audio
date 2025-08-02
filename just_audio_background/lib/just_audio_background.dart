@@ -168,10 +168,15 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
       StreamController<PlaybackEventMessage>.broadcast(sync: true);
   final playerDataController =
       StreamController<PlayerDataMessage>.broadcast(sync: true);
+
+  /// Add visualizer stream controllers
   final visualizerWaveformController =
       StreamController<VisualizerWaveformCaptureMessage>.broadcast(sync: true);
   final visualizerFftController =
       StreamController<VisualizerFftCaptureMessage>.broadcast(sync: true);
+
+  /// Add reference to original platform player for visualizer
+  AudioPlayerPlatform? _originalPlayer;
 
   _JustAudioPlayer({required this.initRequest}) : super(initRequest.id) {
     eventController.onCancel = _playerAudioHandler.cancelStreamSubscriptions;
@@ -187,18 +192,35 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
         .listen((playing) {
       playerDataController.add(PlayerDataMessage(playing: playing));
     });
-    _playerAudioHandler.customEvent
-        .whereType<VisualizerWaveformCaptureMessage>()
-        .listen(visualizerWaveformController.add);
-    _playerAudioHandler.customEvent
-        .whereType<VisualizerFftCaptureMessage>()
-        .listen(visualizerFftController.add);
+
+    /// Initialize original platform player for visualizer support
+    _initOriginalPlayer();
+  }
+
+  Future<void> _initOriginalPlayer() async {
+    try {
+      _originalPlayer =
+          await _platform.init(InitRequest(id: '${initRequest.id}_visualizer'));
+
+      /// Subscribe to visualizer streams from original player
+      _originalPlayer!.visualizerWaveformStream
+          .listen(visualizerWaveformController.add);
+      _originalPlayer!.visualizerFftStream.listen(visualizerFftController.add);
+    } catch (e) {
+      /// Original platform doesn't support visualizer, that's okay
+      debugPrint('Failed to initialize original player for visualizer: $e');
+    }
   }
 
   PlaybackState get playbackState => _audioHandler.playbackState.nvalue!;
 
   Future<void> release() async {
+    /// Delegate visualizer methods to original platform
     await _audioHandler.stop();
+    if (_originalPlayer != null) {
+      await _platform
+          .disposePlayer(DisposePlayerRequest(id: _originalPlayer!.id));
+    }
   }
 
   @override
@@ -209,23 +231,62 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   Stream<PlayerDataMessage> get playerDataMessageStream =>
       playerDataController.stream;
 
+  /// Stream for waveform capture messages from the visualizer
   @override
   Stream<VisualizerWaveformCaptureMessage> get visualizerWaveformStream =>
       visualizerWaveformController.stream;
 
+  /// Stream for FFT capture messages from the visualizer
   @override
   Stream<VisualizerFftCaptureMessage> get visualizerFftStream =>
       visualizerFftController.stream;
 
+  /// Delegate visualizer methods to original platform
   @override
   Future<StartVisualizerResponse> startVisualizer(
-          StartVisualizerRequest request) =>
-      _playerAudioHandler.startVisualizer(request);
+      StartVisualizerRequest request) async {
+    if (_originalPlayer == null) {
+      await _initOriginalPlayer();
+    }
+    if (_originalPlayer != null) {
+      /// Sync the audio source and position
+      await _syncOriginalPlayer();
+      return await _originalPlayer!.startVisualizer(request);
+    }
+    return StartVisualizerResponse();
+  }
 
   @override
   Future<StopVisualizerResponse> stopVisualizer(
-          StopVisualizerRequest request) =>
-      _playerAudioHandler.stopVisualizer(request);
+      StopVisualizerRequest request) async {
+    if (_originalPlayer != null) {
+      return await _originalPlayer!.stopVisualizer(request);
+    }
+    return StopVisualizerResponse();
+  }
+
+  Future<void> _syncOriginalPlayer() async {
+    if (_originalPlayer == null || _playerAudioHandler._source == null) return;
+
+    try {
+      /// Load the same audio source in the original player (muted)
+      await _originalPlayer!.load(LoadRequest(
+        audioSourceMessage: _playerAudioHandler._source!,
+        initialPosition: _playerAudioHandler.currentPosition,
+        initialIndex: _playerAudioHandler.index,
+      ));
+
+      /// Mute the original player so we don't get double audio
+      await _originalPlayer!.setVolume(SetVolumeRequest(volume: 0.1));
+
+      /// Sync playback state
+      if (_playerAudioHandler._playing) {
+        await _originalPlayer!.play(PlayRequest());
+      }
+    } catch (e) {
+      // Sync failed, continue without visualizer
+    }
+  }
 
   @override
   Future<LoadResponse> load(LoadRequest request) =>
@@ -234,12 +295,28 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Future<PlayResponse> play(PlayRequest request) async {
     await _audioHandler.play();
+    /// Sync with original player
+    if (_originalPlayer != null) {
+      try {
+        await _originalPlayer!.play(request);
+      } catch (e) {
+        // Ignore sync errors
+      }
+    }
     return PlayResponse();
   }
 
   @override
   Future<PauseResponse> pause(PauseRequest request) async {
     await _audioHandler.pause();
+    /// Sync with original player
+    if (_originalPlayer != null) {
+      try {
+        await _originalPlayer!.pause(request);
+      } catch (e) {
+        // Ignore sync errors
+      }
+    }
     return PauseResponse();
   }
 
@@ -300,8 +377,18 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
-  Future<SeekResponse> seek(SeekRequest request) =>
-      _playerAudioHandler.customPlayerSeek(request);
+  Future<SeekResponse> seek(SeekRequest request) async {
+    final response = await _playerAudioHandler.customPlayerSeek(request);
+    /// Sync with original player
+    if (_originalPlayer != null) {
+      try {
+        await _originalPlayer!.seek(request);
+    } catch (e) {
+    /// Ignore sync errors
+    }
+  }
+    return response;
+  }
 
   @override
   Future<ConcatenatingInsertAllResponse> concatenatingInsertAll(
