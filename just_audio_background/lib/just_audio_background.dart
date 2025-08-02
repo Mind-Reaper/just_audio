@@ -168,6 +168,8 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
       StreamController<PlaybackEventMessage>.broadcast(sync: true);
   final playerDataController =
       StreamController<PlayerDataMessage>.broadcast(sync: true);
+  final visualizerWaveformController =
+      StreamController<VisualizerWaveformCaptureMessage>.broadcast(sync: true);
 
   _JustAudioPlayer({required this.initRequest}) : super(initRequest.id) {
     eventController.onCancel = _playerAudioHandler.cancelStreamSubscriptions;
@@ -183,6 +185,9 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
         .listen((playing) {
       playerDataController.add(PlayerDataMessage(playing: playing));
     });
+    _audioHandler.customEvent
+        .whereType<VisualizerWaveformCaptureMessage>()
+        .listen(visualizerWaveformController.add);
   }
 
   PlaybackState get playbackState => _audioHandler.playbackState.nvalue!;
@@ -198,6 +203,10 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Stream<PlayerDataMessage> get playerDataMessageStream =>
       playerDataController.stream;
+
+  @override
+  Stream<VisualizerWaveformCaptureMessage> get visualizerWaveformStream =>
+      visualizerWaveformController.stream;
 
   @override
   Future<LoadResponse> load(LoadRequest request) =>
