@@ -187,10 +187,10 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
         .listen((playing) {
       playerDataController.add(PlayerDataMessage(playing: playing));
     });
-    _audioHandler.customEvent
+    _playerAudioHandler.customEvent
         .whereType<VisualizerWaveformCaptureMessage>()
         .listen(visualizerWaveformController.add);
-    _audioHandler.customEvent
+    _playerAudioHandler.customEvent
         .whereType<VisualizerFftCaptureMessage>()
         .listen(visualizerFftController.add);
   }
@@ -217,15 +217,15 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   Stream<VisualizerFftCaptureMessage> get visualizerFftStream =>
       visualizerFftController.stream;
 
-
   @override
-  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) =>
+  Future<StartVisualizerResponse> startVisualizer(
+          StartVisualizerRequest request) =>
       _playerAudioHandler.startVisualizer(request);
 
   @override
-  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) =>
+  Future<StopVisualizerResponse> stopVisualizer(
+          StopVisualizerRequest request) =>
       _playerAudioHandler.stopVisualizer(request);
-
 
   @override
   Future<LoadResponse> load(LoadRequest request) =>
@@ -480,12 +480,13 @@ class _PlayerAudioHandler extends BaseAudioHandler
     return LoadResponse(duration: response.duration);
   }
 
-  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) async =>
-       await (await _player).startVisualizer(request);
+  Future<StartVisualizerResponse> startVisualizer(
+          StartVisualizerRequest request) async =>
+      await (await _player).startVisualizer(request);
 
-  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) async =>
+  Future<StopVisualizerResponse> stopVisualizer(
+          StopVisualizerRequest request) async =>
       await (await _player).stopVisualizer(request);
-
 
   Future<SetVolumeResponse> customSetVolume(SetVolumeRequest request) async =>
       await (await _player).setVolume(request);
