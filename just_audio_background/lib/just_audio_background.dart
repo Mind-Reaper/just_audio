@@ -219,16 +219,12 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
 
 
   @override
-  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) {
-    // TODO: implement startVisualizer
-    return super.startVisualizer(request);
-  }
+  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) =>
+      _playerAudioHandler.startVisualizer(request);
 
   @override
-  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) {
-    // TODO: implement stopVisualizer
-    return super.stopVisualizer(request);
-  }
+  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) =>
+      _playerAudioHandler.stopVisualizer(request);
 
 
   @override
@@ -483,6 +479,13 @@ class _PlayerAudioHandler extends BaseAudioHandler
     ));
     return LoadResponse(duration: response.duration);
   }
+
+  Future<StartVisualizerResponse> startVisualizer(StartVisualizerRequest request) async =>
+       await (await _player).startVisualizer(request);
+
+  Future<StopVisualizerResponse> stopVisualizer(StopVisualizerRequest request) async =>
+      await (await _player).stopVisualizer(request);
+
 
   Future<SetVolumeResponse> customSetVolume(SetVolumeRequest request) async =>
       await (await _player).setVolume(request);
